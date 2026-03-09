@@ -1,0 +1,14 @@
+[[tool.uv.index]]
+name = "Tsinghua_Tuna"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[project]
+name = "manim-ee"
+version = "0.1.0"
+description = "用 manim 库实现电气工程（Electricity Engineering, EE）动画演示"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "manim>=0.20.1",
+]
