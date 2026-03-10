@@ -146,6 +146,9 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Manim generated media (animations, images, logs)
+media/
+
 # mypy
 .mypy_cache/
 .dmypy.json

@@ -126,6 +126,16 @@ class Circuit(VGroup):
     # 保持字典访问支持 (双重保险)
     def __getitem__(self, key):
         return self.elements_dict.get(key)
+        # 🚀 新增功能：指定当前绘图坐标
+
+    def move_cursor_to(self, coord: np.ndarray):
+        """
+        将下一个元件的起点（游标）移动到指定坐标。
+        Args:
+            coord: 新的游标坐标。
+        """
+        self.cursor_coord = np.array(coord, dtype=float)
+        return self # 方便链式调用
     
     # 0.设置绘图角度
     def theta(self, angle_degree):
@@ -165,49 +175,104 @@ class Circuit(VGroup):
         """
         return self.theta(270)
 
-    # 1.增量添加元件
-    def add_elements(self, mobject: VGroup, name: str = None):
-        # 1.整体旋转
+    # 1.增量添加元件（集成锚点与角度设置）
+    def add_elements(
+        self,
+        mobject: VGroup,
+        name: str = None,
+        anchor: np.ndarray | None = None,
+        angle_degree: float | None = None,
+    ):
+        """
+        在电路中添加一个元件，并可选地同时指定：
+            - 元件放置的锚点坐标（anchor）
+            - 元件放置的方向角度（angle_degree，单位：度）
+
+        参数说明：
+            mobject: 要添加的元件（如 Resistor 实例）
+            name: 可选的元件名称，会记录到 elements_dict 中
+            anchor: 
+                - 若为坐标 (np.ndarray)，则元件左端会对齐到该坐标；
+                - 若为方向常量 RIGHT / UP / LEFT / DOWN，则会被解释为
+                  0° / 90° / 180° / 270° 的放置方向（此时不移动游标）。
+            angle_degree: 可选角度；若提供，则在放置前将当前绘图角度设置为该值
+
+        行为等价于按顺序执行：
+            1. 如果 anchor 是 RIGHT / UP / LEFT / DOWN 之一，则根据其设置
+               对应的角度（0/90/180/270 度），并清空锚点坐标；
+            2. 如果给定 angle_degree，则调用 self.theta(angle_degree)
+            3. 如果给定 anchor（且为坐标），则调用 self.move_cursor_to(anchor)
+            4. 使用当前游标坐标和当前角度执行原有的添加逻辑
+
+        示例：
+            # 1）保持现有状态，只按当前游标与角度放置：
+            circuit.add_elements(R1, name="R1")
+
+            # 2）指定角度，但使用当前游标位置：
+            circuit.add_elements(R2, name="R2", angle_degree=120)
+
+            # 3）指定锚点和角度，一次性完成：
+            circuit.add_elements(R3, name="R3",
+                                 anchor=R1.left_terminal,
+                                 angle_degree=240)
+
+            # 4）使用方向常量代替特殊角度（0°/90°/180°/270°）：
+            circuit.add_elements(R4, name="R4", anchor=RIGHT)  # 等价于 angle_degree=0
+            circuit.add_elements(R5, name="R5", anchor=UP)     # 等价于 angle_degree=90
+        """
+        # 0. 如果 anchor 是方向常量，则将其转换为角度信息
+        if anchor is not None:
+            if np.allclose(anchor, RIGHT):
+                if angle_degree is None:
+                    angle_degree = 0
+                anchor = None  # 不移动游标，只用作方向
+            elif np.allclose(anchor, UP):
+                if angle_degree is None:
+                    angle_degree = 90
+                anchor = None
+            elif np.allclose(anchor, LEFT):
+                if angle_degree is None:
+                    angle_degree = 180
+                anchor = None
+            elif np.allclose(anchor, DOWN):
+                if angle_degree is None:
+                    angle_degree = 270
+                anchor = None
+
+        # 1. 可选：设置角度
+        if angle_degree is not None:
+            self.theta(angle_degree)
+
+        # 2. 可选：设置锚点（游标位置）
+        if anchor is not None:
+            self.move_cursor_to(anchor)
+
+        # 3. 按当前角度与游标执行原有放置逻辑
         if self.current_angle != 0.0:
             mobject.rotate_about_origin(self.current_angle)
-        # 2.计算移动量：将元件的左终端移动到当前游标位置
+
+        # 将元件的左终端移动到当前游标位置
         shift_vector = self.cursor_coord - mobject.left_terminal
-        # 3.平移元件 (标签跟随移动)
         mobject.shift(shift_vector)
-        # 4.关键：标签法线定位和逆旋转校正
+
+        # 标签方向与位置校正
         if self.current_angle != 0.0 and hasattr(mobject, 'label'):
-            ## 4.1 获取原标签位置
             original_direction = np.array(mobject.label_position)
-            ## 4.2 使用 Dot 代理进行旋转获取新的法线方向向量
             rotate_proxy = Dot(point=original_direction)
             rotated_direction_proxy = rotate_proxy.rotate_about_origin(self.current_angle)
             new_direction = rotated_direction_proxy.get_center()
-            ## 4.3 逆旋转校正方向
             mobject.label.rotate(-self.current_angle)
-            ## 4.4 使用新的法线方向重新定位标签，参考点注意一定要取 mobject.get_center() 而非 mobject 本身
             mobject.label.next_to(mobject.get_center(), new_direction, buff=mobject.label_buff)
-            ## 一步到位语法（注释掉的代码等价于上面四步）
-            # mobject.label.rotate(-self.current_angle).next_to(mobject.get_center(), Dot(mobject.label_position).rotate_about_origin(self.current_angle).get_center(), mobject.label_buff)
 
-        # 5.更新游标位置到元件的右终端 (下一元件的起点)
+        # 更新游标到元件右端
         self.cursor_coord = np.array(mobject.right_terminal)
 
-        # 6.添加元件到 Circuit容器
+        # 添加到 Circuit 容器并可选记录名称
         self.add(mobject)
         if name:
             self.elements_dict[name] = mobject
-        # 7. 返回 self 实现链式调用
-        return self
 
-    # 🚀 新增功能：指定当前绘图坐标
-    def move_cursor_to(self, coord: np.ndarray):
-        """
-        将下一个元件的起点（游标）移动到指定坐标。
-        Args:
-            coord: 新的游标坐标。
-        """
-        self.cursor_coord = np.array(coord, dtype=float)
-        return self # 方便链式调用
+        return self
 
     # 🚀 新增节点功能
     def add_node(self, coord: np.ndarray, 
@@ -508,14 +573,15 @@ class StarDeltaTransform(Scene):
         R_buff = 0.4
         
         # --- 1. 创建 Delta (三角形) 电路 (源 Mobject)---
-        R12 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{12}$', label_position=UP, color=BLUE, label_buff=R_buff)
-        R23 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{23}$', label_position=UP, color=GREEN, label_buff=R_buff)
-        R31 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{31}$', label_position=UP, color=RED, label_buff=R_buff)
-
+        R12 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{12}$', label_position=UP, color=BLUE, label_buff=R_buff, label_color=BLUE)
+        R23 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{23}$', label_position=UP, color=GREEN, label_buff=R_buff, label_color=GREEN)
+        R31 = Resistor(show_terminals=False, length=R_length, label_text=r'$R_{31}$', label_position=UP, color=RED, label_buff=R_buff, label_color=RED)
+        
         delta_circuit = Circuit(start_pos=UP*1.5 + LEFT*1.5)
-        delta_circuit.theta(0).add_elements(R12, name="R12")
-        delta_circuit.theta(-120).add_elements(R23, name="R23")
-        delta_circuit.theta(120).add_elements(R31, name="R31")
+        # 使用集成版 add_elements：直接指定放置角度
+        delta_circuit.add_elements(R12, name="R12", angle_degree=0)
+        delta_circuit.add_elements(R23, name="R23", angle_degree=-120)
+        delta_circuit.add_elements(R31, name="R31", angle_degree=120)
 
         node1_coord = R12.left_terminal
         node2_coord = R12.right_terminal
@@ -534,9 +600,9 @@ class StarDeltaTransform(Scene):
         star_circuit = Circuit(start_pos=center_node_coord)
         
         # 2.1 定义星形电阻
-        R1 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_1$", label_position=UP, color=BLUE, label_buff=R_buff)
-        R2 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_2$", label_position=UP, color=GREEN, label_buff=R_buff)
-        R3 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_3$", label_position=UP, color=RED, label_buff=R_buff)
+        R1 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_1$", label_position=UP, color=BLUE, label_buff=R_buff, label_color=BLUE)
+        R2 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_2$", label_position=UP, color=GREEN, label_buff=R_buff, label_color=GREEN)
+        R3 = Resistor(show_terminals=False, length=R_length, label_text=r"$R_3$", label_position=UP, color=RED, label_buff=R_buff, label_color=RED)
 
         # 计算放置角度
         angle1 = angle_of_vector(node1_coord - center_node_coord) / DEGREES
@@ -544,24 +610,28 @@ class StarDeltaTransform(Scene):
         angle3 = angle_of_vector(node3_coord - center_node_coord) / DEGREES
         # print(f"Angle A: {angle_A}, B: {angle_B}, C: {angle_C}")
 
-        # 2.2 🚀 关键修改：直接利用 Circuit 方法构建完整的 Star 电路（含端点）
+        # 2.2 🚀 利用集成版 add_elements / add_node 构建完整的 Star 电路（含端点）
         
         # --- R1 分支 ---
-        # star_circuit.move_cursor_to(center_node_coord)
-        star_circuit.theta(angle1).add_elements(R1, name="R1")
-        # 补全星形电路的点1(注意：这里使用 target 的末端坐标)
+        # 以中心点为锚点，按 angle1 方向放置 R1
+        star_circuit.add_elements(R1, name="R1",
+                                  anchor=center_node_coord,
+                                  angle_degree=angle1)
+        # 补全星形电路的点1 (使用 R1 的右端作为坐标)
         node1_star = star_circuit.add_node(R1.right_terminal, label_text="1", label_position=UP+LEFT, label_buff=0.2)
 
         # --- R2 分支 ---
-        star_circuit.move_cursor_to(center_node_coord)
-        star_circuit.theta(angle2).add_elements(R2, name="R2")
-        # 补全星形电路的点2
+        star_circuit.add_elements(R2, name="R2",
+                                  anchor=center_node_coord,
+                                  angle_degree=angle2)
+        # 补全星形电路的点2 (使用 R2 的右端作为坐标)
         node2_star = star_circuit.add_node(R2.right_terminal, label_text="2", label_position=UP+RIGHT, label_buff=0.2)
 
         # --- R3 分支 ---
-        star_circuit.move_cursor_to(center_node_coord)
-        star_circuit.theta(angle3).add_elements(R3, name="R3")
-        # 补全星形电路的点3
+        star_circuit.add_elements(R3, name="R3",
+                                  anchor=center_node_coord,
+                                  angle_degree=angle3)
+        # 补全星形电路的点3 (使用 R3 的右端作为坐标)
         node3_star = star_circuit.add_node(R3.right_terminal, label_text="3", label_position=DOWN, label_buff=0.2)
 
         # 添加中心节点 N
