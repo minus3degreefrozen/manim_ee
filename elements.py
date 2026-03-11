@@ -2,10 +2,55 @@ from manim import *
 import numpy as np
 
 class Resistor(VGroup):
-    def __init__(self, length=2.0, zigzag_count=4,
-                 show_terminals=True, terminal_radius=0.08, terminal_color=WHITE, terminal_opacity=1.0, terminal_extension=0.5,
-                 label_text=None, label_position=UP, label_color=WHITE, label_scale=0.5, label_buff=0.3, **kwargs):
-        # 1.初始化容器并设置样式属性。
+    """
+    电阻元件的基础可视化类。
+
+    特点：
+        - 使用折线锯齿近似表示电阻符号；
+        - 内建左右端点坐标，便于电路连接；
+        - 支持在电阻附近自动放置文本 / LaTeX 标签；
+        - 提供统一的创建动画，方便在电路场景中复用。
+    """
+
+    def __init__(
+        self,
+        length: float = 2.0,
+        zigzag_count: int = 4,
+        show_terminals: bool = True,
+        terminal_radius: float = 0.08,
+        terminal_color: color = WHITE,
+        terminal_opacity: float = 1.0,
+        terminal_extension: float = 0.5,
+        label_text: str | None = None,
+        label_position: np.ndarray = UP,
+        label_color: color = WHITE,
+        label_scale: float = 0.5,
+        label_buff: float = 0.3,
+        **kwargs,
+    ):
+        """
+        创建一个电阻符号。
+
+        参数说明：
+            length:
+                电阻整体长度（包括两端接线段），单位为 Manim 坐标单位。
+            zigzag_count:
+                锯齿“折叠次数”，控制电阻主体的锯齿密度。
+            show_terminals:
+                是否在左右两端绘制端点圆点。
+            terminal_radius / terminal_color / terminal_opacity:
+                端点圆点的半径、颜色和不透明度。
+            terminal_extension:
+                从电阻主体到端点圆点之间的额外接线长度。
+            label_text:
+                电阻标签文本；支持普通字符串和形如 ``"$R_1$"`` 的 LaTeX 文本。
+            label_position:
+                标签相对于电阻主体的方向（如 ``UP``、``DOWN`` 等）。
+            label_color / label_scale / label_buff:
+                标签颜色、缩放比例以及与主体之间的间距。
+            **kwargs:
+                传递给内部 ``VMobject`` 的其他绘制配置（如颜色、线宽等）。
+        """
         super().__init__(**kwargs)
         self.length = length
         self.zigzag_count = zigzag_count
@@ -13,17 +58,16 @@ class Resistor(VGroup):
         self.label_position = label_position
         self.label_buff = label_buff
 
-        # 1.几何体计算：确定初始终端点的坐标 (用于路径和点创建)
+        # 1. 计算左右端点在局部坐标系中的位置（用于路径与端点绘制）
         initial_left_coord = LEFT * (length / 2)
         initial_right_coord = RIGHT * (length / 2)
 
-        # 2.计算锯齿点，并附加终端连接点
-        # 计算锯齿起止点
+        # 2. 计算电阻主体锯齿段的起止点
         start_point = LEFT * (length / 2 - self.terminal_extension)
         end_point = RIGHT * (length / 2 - self.terminal_extension)
         step = (length - self.terminal_extension * 2) / (zigzag_count * 2 + 2)
         points = [initial_left_coord, start_point]
-        # 核心电阻锯齿
+        # 3. 累积生成锯齿折线上的顶点
         current_x = start_point[0] + step
         for i in range(zigzag_count * 2 + 1):
             y_offset = 0.3 if i % 2 == 0 else -0.3
@@ -32,13 +76,20 @@ class Resistor(VGroup):
         points.append(end_point)
         points.append(initial_right_coord)
 
-        # 4.构造子 Mobject 并传入 **kwargs
+        # 4. 使用计算出的顶点创建电阻主体路径
         self.resistor_path = VMobject(**kwargs).set_points_as_corners(points)
 
         self.body = VGroup(self.resistor_path)
 
-        # 5.添加到 VGroup 容器
-        dots = self._add_terminals(show_terminals, terminal_radius, terminal_color, terminal_opacity, initial_left_coord, initial_right_coord)
+        # 5. 根据配置添加端点圆点
+        dots = self._add_terminals(
+            show_terminals,
+            terminal_radius,
+            terminal_color,
+            terminal_opacity,
+            initial_left_coord,
+            initial_right_coord,
+        )
         self.body.add(*dots)
         self.add(self.body)
 
@@ -54,94 +105,296 @@ class Resistor(VGroup):
     @property
     def left_terminal(self):
         """
-        返回左端点的坐标。
+        返回电阻左端（连接点）的坐标。
         """
         return self.resistor_path.get_start()
 
     @property
     def right_terminal(self):
         """
-        返回右端点的坐标。
+        返回电阻右端（连接点）的坐标。
         """
         return self.resistor_path.get_end()
     
     def _add_label(self, text, position, color, scale, buff):
-        # 1. 识别并创建标签
+        """
+        内部工具：在电阻附近创建并附加标签。
+
+        注意：
+            - 标签被包裹在 ``self.label`` 这个 ``VGroup`` 中；
+            - 标签会随电阻整体变换（平移 / 旋转 / 缩放）。
+        """
+        # 1. 根据文本内容选择 MathTex / Tex
         if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
-            # 如果是 LaTeX 格式（以 $ 包裹），使用 MathTex
             label = MathTex(text[1:-1], color=color)
         else:
-            # 否则使用 Tex，兼容纯文本或简单 LaTeX
             label = Tex(text, color=color)
         
-        # 2. 样式和定位
+        # 2. 基本样式与相对位置
         label.scale(scale)
-        # 将标签放置在元件 VGroup(self) 的指定方向
         label.next_to(self, position, buff=buff)
 
-        # 3. 添加到 VGroup，使其与元件一同移动、旋转
+        # 3. 包裹成 VGroup，保证后续整体几何变换时一起参与
         self.label = VGroup()
         self.label.add(label)
         self.add(self.label)
 
     def get_creation_animation(self, run_time=2, **kwargs):
         """
-        返回一个用于创建 Resistor 对象的动画组。
-        此动画使电阻路径和终端点同时开始绘制，保证视觉上的自然和统一。
-        """
-        # 1.检查是否存在子物体（以防万一）
-        if not self.submobjects:
-            return AnimationGroup() # 如果没有子物体，返回空动画组
+        返回一个用于“从无到有”绘制电阻的创建动画。
 
-        # 2.创建动画组，设置 lag_ratio=0 强制并行
+        特点：
+            - 电阻主体与端点会同时被 Create；
+            - 适合作为电路搭建过程中的基础动画单元。
+        """
+        if not self.submobjects:
+            # 极端情况下（没有任何子对象）返回空动画，避免崩溃。
+            return AnimationGroup()
+
+        # 默认情况下，电阻主体与端点并行绘制。
+        return AnimationGroup(
+            *[Create(m, **kwargs) for m in self.submobjects],
+            lag_ratio=0,
+            run_time=run_time,
+            **kwargs,
+        )
+
+
+class Inductor(VGroup):
+    """
+    电感元件的基础可视化类。
+
+    特点：
+        - 使用一串圆弧近似表示电感线圈符号；
+        - 与 ``Resistor`` 保持相同的接口风格（端点、标签、创建动画等）；
+        - 内建左右端点坐标，便于与 ``Circuit`` 配合进行游标放置。
+    """
+
+    def __init__(
+        self,
+        length: float = 2.0,
+        turns: int = 3,
+        show_terminals: bool = True,
+        terminal_radius: float = 0.08,
+        terminal_color: color = WHITE,
+        terminal_opacity: float = 1.0,
+        terminal_extension: float = 0.5,
+        label_text: str | None = None,
+        label_position: np.ndarray = UP,
+        label_color: color = WHITE,
+        label_scale: float = 0.5,
+        label_buff: float = 0.3,
+        **kwargs,
+    ):
+        """
+        创建一个电感符号。
+
+        参数说明：
+            length:
+                电感整体长度（包括两端接线段），单位为 Manim 坐标单位。
+            turns:
+                线圈“圈数”，决定弧形线圈的数量。
+            show_terminals:
+                是否在左右两端绘制端点圆点。
+            terminal_radius / terminal_color / terminal_opacity:
+                端点圆点的半径、颜色和不透明度。
+            terminal_extension:
+                从线圈主体到端点圆点之间的额外接线长度。
+            label_text:
+                电感标签文本；支持普通字符串和形如 ``"$L_1$"`` 的 LaTeX 文本。
+            label_position:
+                标签相对于电感主体的方向（如 ``UP``、``DOWN`` 等）。
+            label_color / label_scale / label_buff:
+                标签颜色、缩放比例以及与主体之间的间距。
+            **kwargs:
+                传递给内部弧线 / 线段的其他绘制配置（如颜色、线宽等）。
+        """
+        super().__init__(**kwargs)
+        self.length = length
+        self.turns = max(1, int(turns))
+        self.terminal_extension = terminal_extension
+        self.label_position = label_position
+        self.label_buff = label_buff
+
+        # 1. 计算左右端点位置（用于接线与端点绘制）
+        initial_left_coord = LEFT * (length / 2)
+        initial_right_coord = RIGHT * (length / 2)
+
+        # 2. 计算线圈主体所在的区间与每一圈的水平跨度
+        coil_length = length - 2 * self.terminal_extension
+        coil_length = max(coil_length, 0.1)  # 防止极端参数导致为负
+        turn_span = coil_length / self.turns
+
+        components: list[Mobject] = []
+
+        # 3. 左右直线接线段（与 Resistor 保持一致的端点几何）
+        left_start = initial_left_coord
+        left_end = left_start + RIGHT * self.terminal_extension
+        right_end = initial_right_coord
+        right_start = right_end + LEFT * self.terminal_extension
+
+        left_lead = Line(left_start, left_end, **kwargs)
+        right_lead = Line(right_start, right_end, **kwargs)
+        components.extend([left_lead, right_lead])
+
+        # 4. 在线圈区间内依次放置若干个“向上凸起”的半圆弧
+        #    使用 ArcBetweenPoints 保证弧线沿水平方向连续排列，形似标准电感符号。
+        coil_start = left_end
+        for i in range(self.turns):
+            p_start = coil_start + RIGHT * (i * turn_span)
+            p_end = coil_start + RIGHT * ((i + 1) * turn_span)
+            # angle=-PI 生成位于上方的半圆（凸起朝上）
+            arc = ArcBetweenPoints(p_start, p_end, angle=-PI, **kwargs)
+            components.append(arc)
+
+        self.body = VGroup(*components)
+        self.add(self.body)
+
+        # 5. 根据配置添加端点圆点
+        if show_terminals:
+            terminal_opacity = terminal_opacity
         else:
-            return AnimationGroup(
-                *[Create(m, **kwargs) for m in self.submobjects],
-                lag_ratio=0,
-                run_time=run_time,
-                **kwargs
-            )
+            terminal_opacity = 0.0
+        dot_left = Dot(
+            initial_left_coord,
+            radius=terminal_radius,
+            color=terminal_color,
+            fill_opacity=terminal_opacity,
+        )
+        dot_right = Dot(
+            initial_right_coord,
+            radius=terminal_radius,
+            color=terminal_color,
+            fill_opacity=terminal_opacity,
+        )
+        self.add(dot_left, dot_right)
+
+        # 6. 为了复用与 Resistor 相同的接口，定义一条隐含“主路径”用于端点坐标获取
+        self.coil_path = Line(initial_left_coord, initial_right_coord)
+
+        if label_text:
+            self._add_label(label_text, label_position, label_color, label_scale, label_buff)
+
+    @property
+    def left_terminal(self):
+        """
+        返回电感左端（连接点）的坐标。
+        """
+        return self.coil_path.get_start()
+
+    @property
+    def right_terminal(self):
+        """
+        返回电感右端（连接点）的坐标。
+        """
+        return self.coil_path.get_end()
+
+    def _add_label(self, text, position, color, scale, buff):
+        """
+        内部工具：在电感附近创建并附加标签。
+
+        行为与 ``Resistor._add_label`` 保持一致，便于在 Circuit 中统一处理。
+        """
+        if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
+            label = MathTex(text[1:-1], color=color)
+        else:
+            label = Tex(text, color=color)
+
+        label.scale(scale)
+        label.next_to(self, position, buff=buff)
+
+        self.label = VGroup()
+        self.label.add(label)
+        self.add(self.label)
+
+    def get_creation_animation(self, run_time=2, **kwargs):
+        """
+        返回一个用于“从无到有”绘制电感的创建动画。
+
+        线圈主体与端点会同时被 Create，适合作为电路搭建过程中的基础动画单元。
+        """
+        if not self.submobjects:
+            return AnimationGroup()
+
+        return AnimationGroup(
+            *[Create(m, **kwargs) for m in self.submobjects],
+            lag_ratio=0,
+            run_time=run_time,
+            **kwargs,
+        )
 
 class Circuit(VGroup):
     """
-    用于封装电路元件和连接线的 VGroup。
+    面向电路绘图的容器类，负责“游标驱动”的元件布置与连线。
+
+    设计要点：
+        - Circuit 自身是一个 ``VGroup``，内部可以包含多个电阻、连线、节点等；
+        - 维护一个“游标位置”和“当前朝向”，用于增量式地放置元件；
+        - 支持按角度布置元件、按坐标或方向指定锚点、控制游标是否前进；
+        - 通过 ``elements_dict`` 提供按名称访问元件的能力（如 ``circuit.R12``）。
     """
     def __init__(self, start_pos=ORIGIN, **kwargs):
         super().__init__(**kwargs)
-        # 核心状态：游标坐标，表示下一个元件的起点
+        # 当前“游标坐标”：下一次放置元件或绘制导线的起点
         self.cursor_coord = np.array(start_pos, dtype=float)
-        self.current_angle = 0.0    # 当前游标方向，初始为0度（向右）
-        self.elements_dict = {}   # 可选：存储元件的字典，便于按名称访问
+        # 当前“游标方向角”：以度为单位，0° 向右，90° 向上等
+        self.current_angle = 0.0
+        # 命名元件字典：支持通过属性或下标访问特定元件
+        self.elements_dict = {}
+        # 控制是否在下一次放置元件后保持游标不动（适用于从中心辐射放置多元件的场景）
+        self._hold_cursor_once = False
     
-    # 🚀 核心：实现 .引用 (例如 delta_target.R12)
     def __getattr__(self, name):
-        # 注意：不要写 self.elements_dict，否则会因递归调用导致死循环
-        # 使用 super().__getattribute__ 获取 elements_dict
+        """
+        支持使用点号语法访问命名元件，例如 ``circuit.R12``。
+        """
         elements = super().__getattribute__("elements_dict")
         if name in elements:
             return elements[name]
-        # 如果字典里也没有，则抛出标准属性错误
         raise AttributeError(f"'{type(self).__name__}' 对象没有属性或元件 '{name}'")
     
-    # 保持字典访问支持 (双重保险)
     def __getitem__(self, key):
+        """
+        通过下标访问命名元件，例如 ``circuit['R12']``。
+        """
         return self.elements_dict.get(key)
-        # 🚀 新增功能：指定当前绘图坐标
 
     def move_cursor_to(self, coord: np.ndarray):
         """
-        将下一个元件的起点（游标）移动到指定坐标。
-        Args:
-            coord: 新的游标坐标。
+        将“游标位置”移动到指定坐标。
+
+        常用于：
+            - 从某个节点重新开始绘制导线；
+            - 在不同子电路之间跳转起点。
         """
         self.cursor_coord = np.array(coord, dtype=float)
-        return self # 方便链式调用
+        return self
     
-    # 0.设置绘图角度
+    def hold(self):
+        """
+        让“下一次” add_elements 调用在放置元件后不更新游标位置。
+        适用于从同一锚点向四周辐射绘制多个元件的场景。
+        
+        典型用法：
+            center = ...
+            circuit.move_cursor_to(center)
+            circuit.hold().add_elements(R1, angle_degree=0)
+            circuit.hold().add_elements(R2, angle_degree=120)
+            circuit.hold().add_elements(R3, angle_degree=240)
+        以上三次放置后，游标仍保持在 center，不会被移动到各个元件的右端。
+        """
+        self._hold_cursor_once = True
+        return self
+
     def theta(self, angle_degree):
         """
-        设置当前游标的绘图角度 (以度为单位)。
-        0度表示向右，90度表示向上，依此类推。
+        设置当前游标的绘图角度（单位：度）。
+
+        约定：
+            - 0° 表示向右；
+            - 90° 表示向上；
+            - 180° 表示向左；
+            - 270° 表示向下。
         """
         self.current_angle = angle_degree * DEGREES
         return self
@@ -264,8 +517,12 @@ class Circuit(VGroup):
             mobject.label.rotate(-self.current_angle)
             mobject.label.next_to(mobject.get_center(), new_direction, buff=mobject.label_buff)
 
-        # 更新游标到元件右端
-        self.cursor_coord = np.array(mobject.right_terminal)
+        # 更新游标到元件右端（若未开启 hold）
+        if self._hold_cursor_once:
+            # 本次放置后保持游标不动，并重置开关
+            self._hold_cursor_once = False
+        else:
+            self.cursor_coord = np.array(mobject.right_terminal)
 
         # 添加到 Circuit 容器并可选记录名称
         self.add(mobject)
@@ -405,54 +662,59 @@ class Circuit(VGroup):
 
 # --- 测试场景 ---
 class CircuitDemo(Scene):
+    """
+    演示单个电阻元件的基础渲染效果：
+        - 不带端点的电阻；
+        - 自定义端点样式（颜色、大小）；
+        - 端点继承主体颜色的情况。
+    """
+
     def construct(self):
         # 1. 默认设置（无端点，颜色为默认白色）
         R1 = Resistor(length=2, show_terminals=False)
         R1.shift(UP * 2)
 
         # 2. 显示端点，并单独设置端点样式
-        R2 = Resistor(length=4, 
-                      color=RED,                       # 电阻主体颜色
-                      stroke_width=6,
-                      show_terminals=True,             # 开启端点
-                      terminal_radius=0.15,            # 增大端点尺寸
-                      terminal_color=YELLOW)           # 端点使用黄色
+        R2 = Resistor(
+            length=4,
+            color=RED,
+            stroke_width=6,
+            show_terminals=True,
+            terminal_radius=0.15,
+            terminal_color=YELLOW,
+        )
         R2.shift(ORIGIN)
 
-        # 3. 显示端点，但不指定颜色（端点继承主体颜色 RED）
-        R3 = Resistor(length=2, 
-                      color=BLUE,
-                      show_terminals=True)             # 端点默认为蓝色
+        # 3. 显示端点，但不指定端点颜色（端点继承主体颜色 BLUE）
+        R3 = Resistor(
+            length=2,
+            color=BLUE,
+            show_terminals=True,
+        )
         R3.shift(DOWN * 2)
 
-        # self.play(FadeIn(R1), FadeIn(R2), FadeIn(R3))
+        # 并行播放三个电阻的创建动画
         self.play(
             R1.get_creation_animation(),
             R2.get_creation_animation(run_time=4),
-            R3.get_creation_animation())
-         # 整体动画时间)
-        # self.play(Create(R3), run_time=4)
+            R3.get_creation_animation(),
+        )
         self.wait(2)
 
+
 class ChainableCircuitDemo(Scene):
+    """
+    演示基于游标的链式电路绘制：
+        - 从左侧起点依次放置电阻；
+        - 使用 ``draw_line`` 通过向量分解绘制 L 形连线；
+        - 展示 Circuit 作为一个整体被 Create 的效果。
+    """
+
     def construct(self):
         # 初始化 Circuit，设置起点在屏幕左侧
-        circuit = Circuit(start_pos=LEFT * 5)  
-        
-        # 链式调用开始
-        # circuit.add_elements(Resistor(length=2.5, color=RED)) \
-        #        .draw_line_to(UP * 2) \
-        #        .add_elements(Resistor(length=1.5, color=BLUE)) \
-        #        .draw_line_to(RIGHT * 2 + UP * 2) \
-        #        .draw_line_to(RIGHT * 2 + DOWN * 2) \
-        #        .add_elements(Resistor(length=2.5, color=GREEN)) \
-        #        .draw_line_to(DOWN * 2) \
-        #        .draw_line_to(LEFT * 5) # 回到起点，形成闭环
-        
-        # 2. 链式绘制
-        # 下面这一步演示复合向量：
-        # LEFT * 5.5 + DOWN * 3 
-        # 它会自动画一条向左 5.5 的线，再画一条向下 3 的线，形成闭环
+        circuit = Circuit(start_pos=LEFT * 5)
+
+        # 从起点开始：电阻 + 水平线 + 电阻 + 竖直线 + 电阻 + 闭合回路
         circuit.add_elements(Resistor(length=2, color=BLUE)) \
             .draw_line(RIGHT * 1.5) \
             .add_elements(Resistor(length=2, color=RED)) \
@@ -460,112 +722,135 @@ class ChainableCircuitDemo(Scene):
             .add_elements(Resistor(length=2, color=YELLOW)) \
             .draw_line(LEFT * 5.5 + DOWN * 3)
 
-        # 动画创建整个 Circuit VGroup
-        self.play(Create(circuit)) 
-
-        # 或者，更细致地动画创建每个元件和连线
-        # animations = [comp.get_creation_animation(run_time=0.8) for comp in circuit.components]
-        # animations.append(Create(circuit.submobjects[-1])) # 动画创建最后的连线
-        
-        # self.play(LaggedStart(*animations, lag_ratio=0.1), run_time=5)
+        # 整体创建电路图
+        self.play(Create(circuit))
         self.wait(1)
 
-class ThetaCircuitDemo(Scene):
-    def construct(self):
-        # 初始化电路
-        circuit = Circuit(start_pos=LEFT * 2 + DOWN * 1)
-        
-        # 电阻长度
-        L = 3
-        
-        # 链式绘制等边三角形电路
-        # 1. 底部电阻 (0度)
-        # 2. 左上电阻 (120度)
-        # 注意：这里我们是逆时针画，所以外角是120度
-        # 3. 右下电阻 (240度 或 -120度)
-        # 形成闭环
-        circuit.theta(0).add_elements(Resistor(length=L, color=BLUE, terminal_extension=0.1, label_text=r'$R_1=10\Omega$',label_scale=0.6, label_position=DOWN, label_color=YELLOW)) \
-               .theta(120).add_elements(Resistor(length=L, color=RED, terminal_extension=1.0, label_text=r'$R_1=6\Omega$',label_scale=0.6, label_position=DOWN, label_color=GREEN)) \
-               .theta(240).add_elements(Resistor(length=L, color=YELLOW, terminal_extension=1.0, label_text=r'$R_1=8\Omega$',label_scale=0.6, label_position=LEFT, label_color=GREEN))
-        
-        # 4. 从顶点引出导线 (混合使用 draw_line_by_length)
-        # 将光标移动到三角形顶点 (通过索引找到第二个电阻的终点)
-        # top_node = circuit.components[1].right_terminal
-        # circuit.move_cursor_to(top_node)
-        
-        # 向上引出一条线
-        # circuit.theta(90).draw_line_by_length(2)
 
-        # 动画播放
-        # 动画创建整个 Circuit VGroup
-        self.play(Create(circuit)) 
-        # self.play(
-        #     LaggedStart(
-        #         *[comp.get_creation_animation() for comp in circuit.components],
-        #         Create(circuit.submobjects[-1]), # 最后的引出线
-        #         lag_ratio=0.5
-        #     ), 
-        #     run_time=4
-        # )
+class ThetaCircuitDemo(Scene):
+    """
+    使用 ``theta`` 控制电阻朝向，构造一个等边三角形电路。
+    """
+
+    def construct(self):
+        circuit = Circuit(start_pos=LEFT * 2 + DOWN * 1)
+        L = 3  # 电阻长度
+
+        # 依次设置 0° / 120° / 240° 的朝向，形成闭合三角形
+        circuit.theta(0).add_elements(
+            Resistor(
+                length=L,
+                color=BLUE,
+                terminal_extension=0.1,
+                label_text=r"$R_1=10\Omega$",
+                label_scale=0.6,
+                label_position=DOWN,
+                label_color=YELLOW,
+            )
+        ).theta(120).add_elements(
+            Resistor(
+                length=L,
+                color=RED,
+                terminal_extension=1.0,
+                label_text=r"$R_1=6\Omega$",
+                label_scale=0.6,
+                label_position=DOWN,
+                label_color=GREEN,
+            )
+        ).theta(240).add_elements(
+            Resistor(
+                length=L,
+                color=YELLOW,
+                terminal_extension=1.0,
+                label_text=r"$R_1=8\Omega$",
+                label_scale=0.6,
+                label_position=LEFT,
+                label_color=GREEN,
+            )
+        )
+
+        self.play(Create(circuit))
         self.wait()
 
 
 class ScaledCircuitDemo(Scene):
-    def construct(self):
-        # 初始化电路
-        circuit = Circuit(start_pos=LEFT * 4)
-        
-        L = 3 # 基础长度
+    """
+    演示在电路中混合使用“正常尺寸”和缩放后的元件：
+        - 比较同一电阻符号在缩放前后的视觉差异；
+        - 说明对 VGroup 直接 ``scale`` 后，Circuit 仍可正常处理其端点。
+    """
 
-        # --- R1: 正常元件 (0度) ---
+    def construct(self):
+        circuit = Circuit(start_pos=LEFT * 4)
+
+        L = 3  # 基础长度
+
+        # 正常尺寸的电阻
         R_norm = Resistor(
-            length=L, 
-            label_text=r'$R_{\text{norm}}$', 
-            label_position=UP, 
+            length=L,
+            label_text=r"$R_{\text{norm}}$",
+            label_position=UP,
             label_buff=0.3,
-            color=BLUE
+            color=BLUE,
         )
-        
-        # --- R2: 放大 1.5 倍的元件 (120度) ---
+
+        # 放大 1.5 倍的电阻，用于对比
         R_scaled = Resistor(
-            length=L, 
-            label_text=r'$R_{\text{scaled}}$', 
-            label_position=DOWN, 
-            label_buff=0.5, # 较大的buff来区分
-            color=RED
+            length=L,
+            label_text=r"$R_{\text{scaled}}$",
+            label_position=DOWN,
+            label_buff=0.5,
+            color=RED,
         )
-        # 🚀 关键测试点：直接应用 VGroup.scale()
-        R_scaled.scale(1.5) 
-        
+        R_scaled.scale(1.5)
+
+        # 在 0° 和 120° 方向依次放入两个电阻，并用一条粗黄色连线闭合
         self.play(
-            Create(circuit.theta(0).add_elements(R_norm).theta(120).add_elements(R_scaled).draw_line_to(circuit.components[0].left_terminal, color=YELLOW, stroke_width=10))
+            Create(
+                circuit.theta(0)
+                .add_elements(R_norm)
+                .theta(120)
+                .add_elements(R_scaled)
+                .draw_line_to(
+                    circuit.components[0].left_terminal,
+                    color=YELLOW,
+                    stroke_width=10,
+                )
+            )
         )
-        
+
         self.wait(2)
 
+
 class StarDeltaTransform(Scene):
+    """
+    △–Y（Delta–Star）变换的可视化示例场景。
+
+    演示内容：
+        - 使用 ``Circuit`` 和 ``Resistor`` 构建 Delta（三角形）和 Star（星形）等效电路；
+        - 通过 ``ReplacementTransform`` 将 Delta 中的电阻与 Star 中的电阻建立视觉对应；
+        - 辅以节点高亮与公式推导动画，展示等效电阻的计算过程。
+    """
+
     def construct(self):
         # --- 0. 场景装饰：标题与版权 ---
 
-        # 1. 顶部标题：△-Y变换
+        # 顶部标题：△-Y 变换
         title = Text("△-Y变换", font="Sans", font_size=44, color=YELLOW)
         title.to_edge(UP, buff=0.5)
-        
-        # 2. 右下角版权：Made By 零下三度极寒
-        # 使用 Text 渲染中文，建议指定一个支持中文的字体（如 "SimHei" 或 "Microsoft YaHei"）
-        copyright_info = Text(
-            "Made By 零下三度极寒", 
-            font="SimHei", 
-            font_size=20, 
-            fill_opacity=0.6, # 设置半透明，防盗且不抢戏
-            color=GRAY
-        )
-        copyright_info.to_edge(DR, buff=0.3) # DR = Down Right
 
-        # 3. 将它们添加到场景（直接 add，不需要动画，或者用 Write 开启）
-        # self.add(title, copyright_info)
-        
-        # 如果你希望标题是随着视频开始写出来的，可以改用：
+        # 右下角版权：Made By 零下三度极寒
+        # 使用支持中文的字体（如 "SimHei" / "Microsoft YaHei"）
+        copyright_info = Text(
+            "Made By 零下三度极寒",
+            font="SimHei",
+            font_size=20,
+            fill_opacity=0.6,
+            color=GRAY,
+        )
+        copyright_info.to_edge(DR, buff=0.3)
+
+        # 标题与版权信息淡入
         self.play(Write(title), FadeIn(copyright_info, shift=LEFT))
 
         # 0. 配置基本元件参数
@@ -611,26 +896,24 @@ class StarDeltaTransform(Scene):
         # print(f"Angle A: {angle_A}, B: {angle_B}, C: {angle_C}")
 
         # 2.2 🚀 利用集成版 add_elements / add_node 构建完整的 Star 电路（含端点）
+        #      使用 hold() 保持游标在中心点，实现“从中心向四周辐射”放置多个元件
+        
+        # 确保游标位于中心节点
+        star_circuit.move_cursor_to(center_node_coord)
         
         # --- R1 分支 ---
-        # 以中心点为锚点，按 angle1 方向放置 R1
-        star_circuit.add_elements(R1, name="R1",
-                                  anchor=center_node_coord,
-                                  angle_degree=angle1)
+        # 使用 hold()，让放置 R1 后游标仍停留在中心
+        star_circuit.hold().add_elements(R1, name="R1", angle_degree=angle1)
         # 补全星形电路的点1 (使用 R1 的右端作为坐标)
         node1_star = star_circuit.add_node(R1.right_terminal, label_text="1", label_position=UP+LEFT, label_buff=0.2)
-
+        
         # --- R2 分支 ---
-        star_circuit.add_elements(R2, name="R2",
-                                  anchor=center_node_coord,
-                                  angle_degree=angle2)
+        star_circuit.hold().add_elements(R2, name="R2", angle_degree=angle2)
         # 补全星形电路的点2 (使用 R2 的右端作为坐标)
         node2_star = star_circuit.add_node(R2.right_terminal, label_text="2", label_position=UP+RIGHT, label_buff=0.2)
-
+        
         # --- R3 分支 ---
-        star_circuit.add_elements(R3, name="R3",
-                                  anchor=center_node_coord,
-                                  angle_degree=angle3)
+        star_circuit.hold().add_elements(R3, name="R3", angle_degree=angle3)
         # 补全星形电路的点3 (使用 R3 的右端作为坐标)
         node3_star = star_circuit.add_node(R3.right_terminal, label_text="3", label_position=DOWN, label_buff=0.2)
 
@@ -830,3 +1113,53 @@ class StarDeltaTransform(Scene):
             run_time=2
         )
         self.wait(1)
+
+
+class InductorDemo(Scene):
+    """
+    演示电感元件 ``Inductor`` 的基础渲染与参数效果：
+        - 调整线圈圈数 ``turns``；
+        - 控制端点是否显示以及端点样式；
+        - 展示标签在不同方向上的放置方式。
+    """
+
+    def construct(self):
+        # 电感 1：默认参数，位于上方
+        L1 = Inductor(
+            length=2.5,
+            turns=3,
+            show_terminals=True,
+            label_text=r"$L_1$",
+            label_position=UP,
+            label_color=YELLOW,
+        ).shift(UP * 2.0)
+
+        # 电感 2：圈数更多，端点变大，位于中间
+        L2 = Inductor(
+            length=3.0,
+            turns=5,
+            show_terminals=True,
+            terminal_radius=0.12,
+            terminal_color=GREEN,
+            label_text=r"$L_2$",
+            label_position=DOWN,
+            label_color=GREEN,
+        )
+
+        # 电感 3：不显示端点，仅作为符号展示，位于下方
+        L3 = Inductor(
+            length=2.5,
+            turns=4,
+            show_terminals=False,
+            label_text=r"$L_3$",
+            label_position=UP,
+            label_color=RED,
+        ).shift(DOWN * 2.0)
+
+        # 并行播放三个电感的创建动画，便于比较外观差异
+        self.play(
+            L1.get_creation_animation(run_time=2.0),
+            L2.get_creation_animation(run_time=2.0),
+            L3.get_creation_animation(run_time=2.0),
+        )
+        self.wait(2)
