@@ -18,12 +18,12 @@ class Resistor(VGroup):
         zigzag_count: int = 4,
         show_terminals: bool = True,
         terminal_radius: float = 0.08,
-        terminal_color: color = WHITE,
+        terminal_color: ManimColor = WHITE,
         terminal_opacity: float = 1.0,
         terminal_extension: float = 0.5,
         label_text: str | None = None,
         label_position: np.ndarray = UP,
-        label_color: color = WHITE,
+        label_color: ManimColor = WHITE,
         label_scale: float = 0.5,
         label_buff: float = 0.3,
         **kwargs,
@@ -176,12 +176,12 @@ class Inductor(VGroup):
         turns: int = 3,
         show_terminals: bool = True,
         terminal_radius: float = 0.08,
-        terminal_color: color = WHITE,
+        terminal_color: ManimColor = WHITE,
         terminal_opacity: float = 1.0,
         terminal_extension: float = 0.5,
         label_text: str | None = None,
         label_position: np.ndarray = UP,
-        label_color: color = WHITE,
+        label_color: ManimColor = WHITE,
         label_scale: float = 0.5,
         label_buff: float = 0.3,
         **kwargs,
@@ -270,7 +270,8 @@ class Inductor(VGroup):
         self.add(dot_left, dot_right)
 
         # 6. 为了复用与 Resistor 相同的接口，定义一条隐含“主路径”用于端点坐标获取
-        self.coil_path = Line(initial_left_coord, initial_right_coord)
+        self.coil_path = Line(initial_left_coord, initial_right_coord).set_stroke(opacity=0)
+        self.body.add(self.coil_path)
 
         if label_text:
             self._add_label(label_text, label_position, label_color, label_scale, label_buff)
@@ -322,6 +323,167 @@ class Inductor(VGroup):
             run_time=run_time,
             **kwargs,
         )
+
+
+class Capacitor(VGroup):
+    """
+    电容元件的基础可视化类。
+
+    特点：
+        - 使用两条平行线段表示电容极板；
+        - 与 ``Resistor``、``Inductor`` 保持相同的接口风格（端点、标签、创建动画等）；
+        - 支持设置正极极板（显示“+”号），并将该符号归入标签组中。
+    """
+
+    def __init__(
+        self,
+        length: float = 2.0,
+        plate_spacing: float = 0.3,
+        plate_length: float = 0.8,
+        show_terminals: bool = True,
+        terminal_radius: float = 0.08,
+        terminal_color: ManimColor = WHITE,
+        terminal_opacity: float = 1.0,
+        terminal_extension: float = 0.5,
+        label_text: str | None = None,
+        label_position: np.ndarray = UP,
+        label_color: ManimColor = WHITE,
+        label_scale: float = 0.5,
+        label_buff: float = 0.3,
+        positive_plate: int | None = None,  # 1 为左极板，2 为右极板
+        **kwargs,
+    ):
+        """
+        创建一个电容符号。
+
+        参数说明：
+            length:
+                电容整体长度（包括两端接线段）。
+            plate_spacing:
+                两个极板之间的间距。
+            plate_length:
+                极板线段的长度。
+            show_terminals:
+                是否在左右两端绘制端点圆点。
+            terminal_radius / terminal_color / terminal_opacity:
+                端点样式参数。
+            terminal_extension:
+                接线段长度。
+            label_text:
+                电容标签文本。
+            label_position:
+                标签位置。
+            positive_plate:
+                指定哪个极板为正极（1:左, 2:右）。若为 None 则不显示正号。
+            **kwargs:
+                传递给内部 VMobject 的绘图配置。
+        """
+        super().__init__(**kwargs)
+        self.length = length
+        self.plate_spacing = plate_spacing
+        self.plate_length = plate_length
+        self.terminal_extension = terminal_extension
+        self.label_position = label_position
+        self.label_buff = label_buff
+        self.positive_plate = positive_plate
+
+        # 1. 计算左右端点位置
+        initial_left_coord = LEFT * (length / 2)
+        initial_right_coord = RIGHT * (length / 2)
+
+        # 2. 计算极板位置
+        left_plate_x = -plate_spacing / 2
+        right_plate_x = plate_spacing / 2
+
+        # 3. 创建接线与极板
+        left_lead = Line(initial_left_coord, np.array([left_plate_x, 0, 0]), **kwargs)
+        right_lead = Line(np.array([right_plate_x, 0, 0]), initial_right_coord, **kwargs)
+        
+        left_plate = Line(
+            np.array([left_plate_x, plate_length / 2, 0]),
+            np.array([left_plate_x, -plate_length / 2, 0]),
+            **kwargs
+        )
+        right_plate = Line(
+            np.array([right_plate_x, plate_length / 2, 0]),
+            np.array([right_plate_x, -plate_length / 2, 0]),
+            **kwargs
+        )
+
+        self.body = VGroup(left_lead, right_lead, left_plate, right_plate)
+        self.add(self.body)
+
+        # 4. 添加端点
+        if show_terminals:
+            terminal_opacity = terminal_opacity
+        else:
+            terminal_opacity = 0.0
+        dot_left = Dot(
+            initial_left_coord,
+            radius=terminal_radius,
+            color=terminal_color,
+            fill_opacity=terminal_opacity,
+        )
+        dot_right = Dot(
+            initial_right_coord,
+            radius=terminal_radius,
+            color=terminal_color,
+            fill_opacity=terminal_opacity,
+        )
+        self.add(dot_left, dot_right)
+
+        # 5. 定义主路径
+        self.cap_path = Line(initial_left_coord, initial_right_coord).set_stroke(opacity=0)
+        self.body.add(self.cap_path)
+
+        # 6. 添加标签（含极性符号）
+        self._add_label(label_text, label_position, label_color, label_scale, label_buff)
+
+    @property
+    def left_terminal(self):
+        return self.cap_path.get_start()
+
+    @property
+    def right_terminal(self):
+        return self.cap_path.get_end()
+
+    def _add_label(self, text, position, color, scale, buff):
+        """
+        创建并附加标签，同时处理正号。
+        """
+        self.label = VGroup()
+
+        # 1. 主文本标签
+        if text:
+            if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
+                label_obj = MathTex(text[1:-1], color=color)
+            else:
+                label_obj = Tex(text, color=color)
+            label_obj.scale(scale)
+            label_obj.next_to(self, position, buff=buff)
+            self.label.add(label_obj)
+
+        # 2. 正号符号
+        if self.positive_plate in [1, 2]:
+            plus_sign = MathTex("+", color=color).scale(scale * 0.8)
+            plate_x = -self.plate_spacing / 2 - 0.15 if self.positive_plate == 1 else self.plate_spacing / 2 + 0.15
+            # 放在极板上方一点点
+            plus_sign.move_to(np.array([plate_x, self.plate_length / 2, 0]))
+            self.label.add(plus_sign)
+
+        if self.label.submobjects:
+            self.add(self.label)
+
+    def get_creation_animation(self, run_time=2, **kwargs):
+        if not self.submobjects:
+            return AnimationGroup()
+        return AnimationGroup(
+            *[Create(m, **kwargs) for m in self.submobjects],
+            lag_ratio=0,
+            run_time=run_time,
+            **kwargs,
+        )
+
 
 class Circuit(VGroup):
     """
@@ -432,7 +594,7 @@ class Circuit(VGroup):
     def add_elements(
         self,
         mobject: VGroup,
-        name: str = None,
+        name: str | None = None,
         anchor: np.ndarray | None = None,
         angle_degree: float | None = None,
     ):
@@ -532,15 +694,15 @@ class Circuit(VGroup):
         return self
 
     # 🚀 新增节点功能
-    def add_node(self, coord: np.ndarray, 
-                 label_text: str = None, 
-                 node_radius: float = 0.08, 
-                 node_color: color = WHITE, 
-                 label_position: np.ndarray = UP, 
-                 label_color: color = WHITE, 
-                 label_scale: float = 0.5, 
+    def add_node(self, coord: np.ndarray,
+                 label_text: str | None = None,
+                 node_radius: float = 0.08,
+                 node_color: ManimColor = WHITE,
+                 label_position: np.ndarray = UP,
+                 label_color: ManimColor = WHITE,
+                 label_scale: float = 0.5,
                  label_buff: float = 0.2,
-                 name: str = None) -> Dot:
+                 name: str | None = None) -> Dot:
         """
         在指定坐标添加一个节点（Dot）和可选的标签。
         
@@ -1158,8 +1320,65 @@ class InductorDemo(Scene):
 
         # 并行播放三个电感的创建动画，便于比较外观差异
         self.play(
-            L1.get_creation_animation(run_time=2.0),
-            L2.get_creation_animation(run_time=2.0),
-            L3.get_creation_animation(run_time=2.0),
+            L1.get_creation_animation(run_time=2),
+            L2.get_creation_animation(run_time=2),
+            L3.get_creation_animation(run_time=2),
+        )
+        self.wait(2)
+
+
+class CapacitorDemo(Scene):
+    """
+    演示电容元件 ``Capacitor`` 的基础渲染与参数效果：
+        - 基础电容符号；
+        - 设置正极极板与极性符号；
+        - 在 Circuit 中使用电容。
+    """
+
+    def construct(self):
+        # 1. 基础电容，不带极性
+        C1 = Capacitor(
+            length=2,
+            label_text=r"$C_1$",
+            label_position=UP,
+            color=BLUE
+        ).shift(UP * 2 + LEFT * 3)
+
+        # 2. 带正极的电容（左极板为正）
+        C2 = Capacitor(
+            length=2,
+            positive_plate=1,
+            label_text=r"$C_2$",
+            label_position=UP,
+            color=RED
+        ).shift(UP * 2 + RIGHT * 3)
+
+        # 3. 带正极的电容（右极板为正）
+        C3 = Capacitor(
+            length=2,
+            positive_plate=2,
+            label_text=r"$C_3$",
+            label_position=DOWN,
+            color=GREEN
+        ).shift(DOWN * 2 + LEFT * 3)
+
+        # 4. 在 Circuit 中链式添加电容
+        circuit = Circuit(start_pos=DOWN * 2 + RIGHT * 1)
+        circuit.add_elements(
+            Capacitor(length=2, label_text=r"$C_4$", color=YELLOW),
+            name="C4",
+            angle_degree=90
+        ).draw_line(RIGHT * 2).add_elements(
+            Capacitor(length=2, positive_plate=1, label_text=r"$C_5$", color=PURPLE),
+            name="C5",
+            angle_degree=0
+        )
+
+        self.play(
+            C1.get_creation_animation(),
+            C2.get_creation_animation(),
+            C3.get_creation_animation(),
+            Create(circuit),
+            run_time=3
         )
         self.wait(2)
