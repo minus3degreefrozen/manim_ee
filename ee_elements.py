@@ -2,7 +2,81 @@ from manim import *
 import numpy as np
 
 
-class Resistor(VGroup):
+class TwoTerminalElement(VGroup):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.body = VGroup()
+        self.add(self.body)
+
+    def get_label_text(self, index: int = 0) -> Mobject | None:
+        if hasattr(self, "label_text_group") and len(self.label_text_group) > index:
+            return self.label_text_group[index]
+        return None
+
+    def _set_main_path(self, path: VMobject):
+        self._main_path = path
+
+    @property
+    def left_terminal(self):
+        return self._main_path.get_start()
+
+    @property
+    def right_terminal(self):
+        return self._main_path.get_end()
+
+    def _add_terminals(
+        self,
+        show_terminals: bool,
+        terminal_radius: float,
+        terminal_color: ManimColor,
+        terminal_opacity: float,
+        initial_left_coord: np.ndarray,
+        initial_right_coord: np.ndarray,
+    ):
+        opacity = terminal_opacity if show_terminals else 0.0
+        dot_left = Dot(initial_left_coord, radius=terminal_radius, color=terminal_color, fill_opacity=opacity)
+        dot_right = Dot(initial_right_coord, radius=terminal_radius, color=terminal_color, fill_opacity=opacity)
+        self.body.add(dot_left, dot_right)
+        return dot_left, dot_right
+
+    def _ensure_label_groups(self):
+        if not hasattr(self, "label"):
+            self.label = VGroup()
+            self.label_text_group = VGroup()
+            self.label_mark_group = VGroup()
+            self.label.add(self.label_text_group, self.label_mark_group)
+            self.add(self.label)
+        return self.label, self.label_text_group, self.label_mark_group
+
+    def _add_text_label(self, text: str | None, position: np.ndarray, color: ManimColor, scale: float, buff: float):
+        if not text:
+            return None
+
+        if isinstance(text, str) and text.startswith("$") and text.endswith("$"):
+            label_obj = MathTex(text[1:-1], color=color)
+        else:
+            label_obj = Tex(text, color=color)
+
+        label_obj.scale(scale)
+        label_obj.next_to(self, position, buff=buff)
+
+        _, label_text_group, _ = self._ensure_label_groups()
+        label_text_group.add(label_obj)
+        return label_obj
+
+    def get_creation_animation(self, run_time=2, **kwargs):
+        if not self.submobjects:
+            return AnimationGroup()
+
+        return AnimationGroup(
+            *[Create(m, **kwargs) for m in self.submobjects],
+            lag_ratio=0,
+            run_time=run_time,
+            **kwargs,
+        )
+
+
+class Resistor(TwoTerminalElement):
     """
     电阻元件的基础可视化类。
 
@@ -75,9 +149,10 @@ class Resistor(VGroup):
         points.append(initial_right_coord)
 
         self.resistor_path = VMobject(**kwargs).set_points_as_corners(points)
-        self.body = VGroup(self.resistor_path)
+        self.body.add(self.resistor_path)
+        self._set_main_path(self.resistor_path)
 
-        dots = self._add_terminals(
+        self._add_terminals(
             show_terminals,
             terminal_radius,
             terminal_color,
@@ -85,52 +160,12 @@ class Resistor(VGroup):
             initial_left_coord,
             initial_right_coord,
         )
-        self.body.add(*dots)
-        self.add(self.body)
 
         if label_text:
-            self._add_label(label_text, label_position, label_color, label_scale, label_buff)
-
-    def _add_terminals(self, show_terminals, terminal_radius, terminal_color, terminal_opacity, initial_left_coord, initial_right_coord):
-        terminal_opacity = terminal_opacity if show_terminals else 0.0
-        dot_left = Dot(initial_left_coord, radius=terminal_radius, color=terminal_color, fill_opacity=terminal_opacity)
-        dot_right = Dot(initial_right_coord, radius=terminal_radius, color=terminal_color, fill_opacity=terminal_opacity)
-        return [dot_left, dot_right]
-    
-    @property
-    def left_terminal(self):
-        return self.resistor_path.get_start()
-
-    @property
-    def right_terminal(self):
-        return self.resistor_path.get_end()
-    
-    def _add_label(self, text, position, color, scale, buff):
-        if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
-            label = MathTex(text[1:-1], color=color)
-        else:
-            label = Tex(text, color=color)
-        
-        label.scale(scale)
-        label.next_to(self, position, buff=buff)
-
-        self.label = VGroup()
-        self.label.add(label)
-        self.add(self.label)
-
-    def get_creation_animation(self, run_time=2, **kwargs):
-        if not self.submobjects:
-            return AnimationGroup()
-
-        return AnimationGroup(
-            *[Create(m, **kwargs) for m in self.submobjects],
-            lag_ratio=0,
-            run_time=run_time,
-            **kwargs,
-        )
+            self._add_text_label(label_text, label_position, label_color, label_scale, label_buff)
 
 
-class Inductor(VGroup):
+class Inductor(TwoTerminalElement):
     """
     电感元件的基础可视化类。
 
@@ -191,67 +226,26 @@ class Inductor(VGroup):
             arc = ArcBetweenPoints(p_start, p_end, angle=-PI, **kwargs)
             components.append(arc)
 
-        self.body = VGroup(*components)
-        self.add(self.body)
+        self.body.add(*components)
 
-        if show_terminals:
-            terminal_opacity = terminal_opacity
-        else:
-            terminal_opacity = 0.0
-        dot_left = Dot(
+        self._add_terminals(
+            show_terminals,
+            terminal_radius,
+            terminal_color,
+            terminal_opacity,
             initial_left_coord,
-            radius=terminal_radius,
-            color=terminal_color,
-            fill_opacity=terminal_opacity,
-        )
-        dot_right = Dot(
             initial_right_coord,
-            radius=terminal_radius,
-            color=terminal_color,
-            fill_opacity=terminal_opacity,
         )
-        self.add(dot_left, dot_right)
 
         self.coil_path = Line(initial_left_coord, initial_right_coord).set_stroke(opacity=0)
         self.body.add(self.coil_path)
+        self._set_main_path(self.coil_path)
 
         if label_text:
-            self._add_label(label_text, label_position, label_color, label_scale, label_buff)
-
-    @property
-    def left_terminal(self):
-        return self.coil_path.get_start()
-
-    @property
-    def right_terminal(self):
-        return self.coil_path.get_end()
-
-    def _add_label(self, text, position, color, scale, buff):
-        if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
-            label = MathTex(text[1:-1], color=color)
-        else:
-            label = Tex(text, color=color)
-
-        label.scale(scale)
-        label.next_to(self, position, buff=buff)
-
-        self.label = VGroup()
-        self.label.add(label)
-        self.add(self.label)
-
-    def get_creation_animation(self, run_time=2, **kwargs):
-        if not self.submobjects:
-            return AnimationGroup()
-
-        return AnimationGroup(
-            *[Create(m, **kwargs) for m in self.submobjects],
-            lag_ratio=0,
-            run_time=run_time,
-            **kwargs,
-        )
+            self._add_text_label(label_text, label_position, label_color, label_scale, label_buff)
 
 
-class Capacitor(VGroup):
+class Capacitor(TwoTerminalElement):
     """
     电容元件的基础可视化类。
 
@@ -311,67 +305,26 @@ class Capacitor(VGroup):
             **kwargs
         )
 
-        self.body = VGroup(left_lead, right_lead, left_plate, right_plate)
-        self.add(self.body)
+        self.body.add(left_lead, right_lead, left_plate, right_plate)
 
-        if show_terminals:
-            terminal_opacity = terminal_opacity
-        else:
-            terminal_opacity = 0.0
-        dot_left = Dot(
+        self._add_terminals(
+            show_terminals,
+            terminal_radius,
+            terminal_color,
+            terminal_opacity,
             initial_left_coord,
-            radius=terminal_radius,
-            color=terminal_color,
-            fill_opacity=terminal_opacity,
-        )
-        dot_right = Dot(
             initial_right_coord,
-            radius=terminal_radius,
-            color=terminal_color,
-            fill_opacity=terminal_opacity,
         )
-        self.add(dot_left, dot_right)
 
         self.cap_path = Line(initial_left_coord, initial_right_coord).set_stroke(opacity=0)
         self.body.add(self.cap_path)
+        self._set_main_path(self.cap_path)
 
-        self._add_label(label_text, label_position, label_color, label_scale, label_buff)
-
-    @property
-    def left_terminal(self):
-        return self.cap_path.get_start()
-
-    @property
-    def right_terminal(self):
-        return self.cap_path.get_end()
-
-    def _add_label(self, text, position, color, scale, buff):
-        self.label = VGroup()
-
-        if text:
-            if isinstance(text, str) and text.startswith('$') and text.endswith('$'):
-                label_obj = MathTex(text[1:-1], color=color)
-            else:
-                label_obj = Tex(text, color=color)
-            label_obj.scale(scale)
-            label_obj.next_to(self, position, buff=buff)
-            self.label.add(label_obj)
+        self._add_text_label(label_text, label_position, label_color, label_scale, label_buff)
 
         if self.positive_plate in [1, 2]:
-            plus_sign = MathTex("+", color=color).scale(scale * 0.8)
+            _, _, label_mark_group = self._ensure_label_groups()
+            plus_sign = MathTex("+", color=label_color).scale(label_scale * 0.8)
             plate_x = -self.plate_spacing / 2 - 0.15 if self.positive_plate == 1 else self.plate_spacing / 2 + 0.15
             plus_sign.move_to(np.array([plate_x, self.plate_length / 2, 0]))
-            self.label.add(plus_sign)
-
-        if self.label.submobjects:
-            self.add(self.label)
-
-    def get_creation_animation(self, run_time=2, **kwargs):
-        if not self.submobjects:
-            return AnimationGroup()
-        return AnimationGroup(
-            *[Create(m, **kwargs) for m in self.submobjects],
-            lag_ratio=0,
-            run_time=run_time,
-            **kwargs,
-        )
+            label_mark_group.add(plus_sign)

@@ -368,26 +368,59 @@ class StarDeltaTransform(Scene):
         self.play(
             # 突出显示 R1 及其标签
             Indicate(star_circuit.R1, color=BLUE),
-            TransformFromCopy(star_circuit.R1.label.copy(), formula_R1[0][:2].set_color(BLUE)),
+            TransformMatchingShapes(
+                star_circuit.R1.get_label_text().copy(),
+                formula_R1[0][:2].set_color(BLUE),
+                transform_mismatches=True,
+            ),
             run_time=1.5
         )
         self.play(Write(formula_R1[0][2]), Write(formula_R1[0][9]), run_time=0.5)
         self.play(
             Indicate(delta_target.R12, color=BLUE),
             Indicate(delta_target.R31, color=RED),
-            TransformFromCopy(delta_target.R12.label.copy(), formula_R1[0][3:6].set_color(BLUE)),
-            TransformFromCopy(delta_target.R31.label.copy(), formula_R1[0][6:9].set_color(RED)),
+            TransformMatchingShapes(
+                delta_target.R12.get_label_text().copy(),
+                formula_R1[0][3:6].set_color(BLUE),
+                transform_mismatches=True,
+            ),
+            TransformMatchingShapes(
+                delta_target.R31.get_label_text().copy(),
+                formula_R1[0][6:9].set_color(RED),
+                transform_mismatches=True,
+            ),
             run_time=2
         )
         self.play(
             Indicate(delta_target.R12, color=BLUE),
             Indicate(delta_target.R23, color=GREEN),
             Indicate(delta_target.R31, color=RED),
-            TransformFromCopy(delta_target.R12.label.copy(), formula_R1[0][10:13].set_color(BLUE)),
-            TransformFromCopy(delta_target.R23.label.copy(), formula_R1[0][14:17].set_color(GREEN)),
-            TransformFromCopy(delta_target.R31.label.copy(), formula_R1[0][18:].set_color(RED)),
-            Write(formula_R1[0][13]), Write(formula_R1[0][17]),
-            run_time=2
+            TransformMatchingShapes(
+                delta_target.R12.get_label_text().copy(),
+                formula_R1[0][10:13].set_color(BLUE),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R23.get_label_text().copy(),
+                formula_R1[0][14:17].set_color(GREEN),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R31.get_label_text().copy(),
+                formula_R1[0][18:].set_color(RED),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            Succession(
+                Wait(1.5),
+                AnimationGroup(
+                    Write(formula_R1[0][13], run_time=0.5),
+                    Write(formula_R1[0][17], run_time=0.5),
+                    lag_ratio=0,
+                ),
+            ),
         )
      
         self.wait(1)
@@ -397,7 +430,11 @@ class StarDeltaTransform(Scene):
         self.play(
             # 突出显示 R2 及其标签
             Indicate(star_circuit.R2, color=GREEN),
-            TransformFromCopy(star_circuit.R2.label.copy(), formula_R2[0][:2].set_color(GREEN)),
+            TransformMatchingShapes(
+                star_circuit.R2.get_label_text().copy(),
+                formula_R2[0][:2].set_color(GREEN),
+                transform_mismatches=True,
+            ),
             run_time=1.5
         )
         # 写等号和分式线
@@ -407,8 +444,16 @@ class StarDeltaTransform(Scene):
         self.play(
             Indicate(delta_target.R12, color=BLUE),
             Indicate(delta_target.R23, color=GREEN),
-            TransformFromCopy(delta_target.R12.label.copy(), formula_R2[0][3:6].set_color(BLUE)),
-            TransformFromCopy(delta_target.R23.label.copy(), formula_R2[0][6:9].set_color(GREEN)),
+            TransformMatchingShapes(
+                delta_target.R12.get_label_text().copy(),
+                formula_R2[0][3:6].set_color(BLUE),
+                transform_mismatches=True,
+            ),
+            TransformMatchingShapes(
+                delta_target.R23.get_label_text().copy(),
+                formula_R2[0][6:9].set_color(GREEN),
+                transform_mismatches=True,
+            ),
             run_time=2
         )
 
@@ -417,11 +462,32 @@ class StarDeltaTransform(Scene):
             Indicate(delta_target.R12, color=BLUE),
             Indicate(delta_target.R23, color=GREEN),
             Indicate(delta_target.R31, color=RED),
-            TransformFromCopy(delta_target.R12.label.copy(), formula_R2[0][10:13].set_color(BLUE)),
-            TransformFromCopy(delta_target.R23.label.copy(), formula_R2[0][14:17].set_color(GREEN)),
-            TransformFromCopy(delta_target.R31.label.copy(), formula_R2[0][18:].set_color(RED)),
-            Write(formula_R2[0][13]), Write(formula_R2[0][17]), # 写加号
-            run_time=2
+            TransformMatchingShapes(
+                delta_target.R12.get_label_text().copy(),
+                formula_R2[0][10:13].set_color(BLUE),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R23.get_label_text().copy(),
+                formula_R2[0][14:17].set_color(GREEN),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R31.get_label_text().copy(),
+                formula_R2[0][18:].set_color(RED),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            Succession(
+                Wait(1.5),
+                AnimationGroup(
+                    Write(formula_R2[0][13], run_time=0.5),
+                    Write(formula_R2[0][17], run_time=0.5),
+                    lag_ratio=0,
+                ),
+            ), # 写加号
         )
         self.wait(1)
 
@@ -430,7 +496,11 @@ class StarDeltaTransform(Scene):
         self.play(
             # 突出显示 R3 及其标签
             Indicate(star_circuit.R3, color=RED),
-            TransformFromCopy(star_circuit.R3.label.copy(), formula_R3[0][:2].set_color(RED)),
+            TransformMatchingShapes(
+                star_circuit.R3.get_label_text().copy(),
+                formula_R3[0][:2].set_color(RED),
+                transform_mismatches=True,
+            ),
             run_time=1.5
         )
         # 写等号和分式线
@@ -440,8 +510,16 @@ class StarDeltaTransform(Scene):
         self.play(
             Indicate(delta_target.R23, color=GREEN),
             Indicate(delta_target.R31, color=RED),
-            TransformFromCopy(delta_target.R23.label.copy(), formula_R3[0][3:6].set_color(GREEN)),
-            TransformFromCopy(delta_target.R31.label.copy(), formula_R3[0][6:9].set_color(RED)),
+            TransformMatchingShapes(
+                delta_target.R23.get_label_text().copy(),
+                formula_R3[0][3:6].set_color(GREEN),
+                transform_mismatches=True,
+            ),
+            TransformMatchingShapes(
+                delta_target.R31.get_label_text().copy(),
+                formula_R3[0][6:9].set_color(RED),
+                transform_mismatches=True,
+            ),
             run_time=2
         )
 
@@ -450,11 +528,32 @@ class StarDeltaTransform(Scene):
             Indicate(delta_target.R12, color=BLUE),
             Indicate(delta_target.R23, color=GREEN),
             Indicate(delta_target.R31, color=RED),
-            TransformFromCopy(delta_target.R12.label.copy(), formula_R3[0][10:13].set_color(BLUE)),
-            TransformFromCopy(delta_target.R23.label.copy(), formula_R3[0][14:17].set_color(GREEN)),
-            TransformFromCopy(delta_target.R31.label.copy(), formula_R3[0][18:].set_color(RED)),
-            Write(formula_R3[0][13]), Write(formula_R3[0][17]), # 写加号
-            run_time=2
+            TransformMatchingShapes(
+                delta_target.R12.get_label_text().copy(),
+                formula_R3[0][10:13].set_color(BLUE),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R23.get_label_text().copy(),
+                formula_R3[0][14:17].set_color(GREEN),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            TransformMatchingShapes(
+                delta_target.R31.get_label_text().copy(),
+                formula_R3[0][18:].set_color(RED),
+                transform_mismatches=True,
+                run_time=2,
+            ),
+            Succession(
+                Wait(1.5),
+                AnimationGroup(
+                    Write(formula_R3[0][13], run_time=0.5),
+                    Write(formula_R3[0][17], run_time=0.5),
+                    lag_ratio=0,
+                ),
+            ), # 写加号
         )
         self.wait(1)
 
