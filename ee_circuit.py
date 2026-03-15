@@ -187,20 +187,8 @@ class Circuit(VGroup):
         shift_vector = self.cursor_coord - mobject.left_terminal
         mobject.shift(shift_vector)
 
-        # 标签方向与位置校正
-        if self.current_angle != 0.0 and hasattr(mobject, 'label'):
-            original_direction = np.array(mobject.label_position)
-            rotate_proxy = Dot(point=original_direction)
-            rotated_direction_proxy = rotate_proxy.rotate_about_origin(self.current_angle)
-            new_direction = rotated_direction_proxy.get_center()
-            if hasattr(mobject, "label_text_group"):
-                mobject.label_text_group.rotate(-self.current_angle)
-                mobject.label_text_group.next_to(mobject.get_center(), new_direction, buff=mobject.label_buff)
-                if hasattr(mobject, "label_mark_group"):
-                    mobject.label_mark_group.rotate(-self.current_angle)
-            else:
-                mobject.label.rotate(-self.current_angle)
-                mobject.label.next_to(mobject.get_center(), new_direction, buff=mobject.label_buff)
+        if hasattr(mobject, "update_label_for_angle"):
+            mobject.update_label_for_angle(self.current_angle)
 
         # 更新游标到元件右端（若未开启 hold）
         if self._hold_cursor_once:

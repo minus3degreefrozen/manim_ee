@@ -64,6 +64,28 @@ class TwoTerminalElement(VGroup):
         label_text_group.add(label_obj)
         return label_obj
 
+    def update_label_for_angle(self, angle: float):
+        if not hasattr(self, "label"):
+            return self
+
+        original_direction = np.array(getattr(self, "label_position", UP))
+        rotate_proxy = Dot(point=original_direction)
+        rotated_direction_proxy = rotate_proxy.rotate_about_origin(angle)
+        new_direction = rotated_direction_proxy.get_center()
+
+        buff = getattr(self, "label_buff", 0.3)
+
+        if hasattr(self, "label_text_group"):
+            self.label_text_group.rotate(-angle)
+            self.label_text_group.next_to(self.get_center(), new_direction, buff=buff)
+            if hasattr(self, "label_mark_group"):
+                self.label_mark_group.rotate(-angle)
+        else:
+            self.label.rotate(-angle)
+            self.label.next_to(self.get_center(), new_direction, buff=buff)
+
+        return self
+
     def get_creation_animation(self, run_time=2, **kwargs):
         if not self.submobjects:
             return AnimationGroup()
@@ -96,6 +118,8 @@ class Resistor(TwoTerminalElement):
         terminal_color: ManimColor = WHITE,
         terminal_opacity: float = 1.0,
         terminal_extension: float = 0.5,
+        left_terminal_coord: np.ndarray | None = None,
+        right_terminal_coord: np.ndarray | None = None,
         label_text: str | None = None,
         label_position: np.ndarray = UP,
         label_color: ManimColor = WHITE,
@@ -127,9 +151,16 @@ class Resistor(TwoTerminalElement):
                 传递给内部 ``VMobject`` 的其他绘制配置（如颜色、线宽等）。
         """
         super().__init__(**kwargs)
+
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            left_terminal_coord = np.array(left_terminal_coord, dtype=float)
+            right_terminal_coord = np.array(right_terminal_coord, dtype=float)
+            length = float(np.linalg.norm(right_terminal_coord - left_terminal_coord))
+
         self.length = length
         self.zigzag_count = zigzag_count
-        self.terminal_extension = terminal_extension
+        max_terminal_extension = max(self.length / 2 - 0.1, 0.0)
+        self.terminal_extension = min(terminal_extension, max_terminal_extension)
         self.label_position = label_position
         self.label_buff = label_buff
 
@@ -164,6 +195,15 @@ class Resistor(TwoTerminalElement):
         if label_text:
             self._add_text_label(label_text, label_position, label_color, label_scale, label_buff)
 
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            desired_vec = np.array(right_terminal_coord, dtype=float) - np.array(left_terminal_coord, dtype=float)
+            if np.allclose(desired_vec, 0):
+                raise ValueError("left_terminal_coord 与 right_terminal_coord 重合，无法确定元件方向与长度。")
+            desired_angle = angle_of_vector(desired_vec)
+            self.rotate(desired_angle, about_point=ORIGIN)
+            self.shift(np.array(left_terminal_coord, dtype=float) - np.array(self.left_terminal, dtype=float))
+            self.update_label_for_angle(desired_angle)
+ 
 
 class Inductor(TwoTerminalElement):
     """
@@ -184,6 +224,8 @@ class Inductor(TwoTerminalElement):
         terminal_color: ManimColor = WHITE,
         terminal_opacity: float = 1.0,
         terminal_extension: float = 0.5,
+        left_terminal_coord: np.ndarray | None = None,
+        right_terminal_coord: np.ndarray | None = None,
         label_text: str | None = None,
         label_position: np.ndarray = UP,
         label_color: ManimColor = WHITE,
@@ -195,9 +237,16 @@ class Inductor(TwoTerminalElement):
         创建一个电感符号。
         """
         super().__init__(**kwargs)
+
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            left_terminal_coord = np.array(left_terminal_coord, dtype=float)
+            right_terminal_coord = np.array(right_terminal_coord, dtype=float)
+            length = float(np.linalg.norm(right_terminal_coord - left_terminal_coord))
+
         self.length = length
         self.turns = max(1, int(turns))
-        self.terminal_extension = terminal_extension
+        max_terminal_extension = max(self.length / 2 - 0.05, 0.0)
+        self.terminal_extension = min(terminal_extension, max_terminal_extension)
         self.label_position = label_position
         self.label_buff = label_buff
 
@@ -244,6 +293,15 @@ class Inductor(TwoTerminalElement):
         if label_text:
             self._add_text_label(label_text, label_position, label_color, label_scale, label_buff)
 
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            desired_vec = np.array(right_terminal_coord, dtype=float) - np.array(left_terminal_coord, dtype=float)
+            if np.allclose(desired_vec, 0):
+                raise ValueError("left_terminal_coord 与 right_terminal_coord 重合，无法确定元件方向与长度。")
+            desired_angle = angle_of_vector(desired_vec)
+            self.rotate(desired_angle, about_point=ORIGIN)
+            self.shift(np.array(left_terminal_coord, dtype=float) - np.array(self.left_terminal, dtype=float))
+            self.update_label_for_angle(desired_angle)
+
 
 class Capacitor(TwoTerminalElement):
     """
@@ -265,6 +323,8 @@ class Capacitor(TwoTerminalElement):
         terminal_color: ManimColor = WHITE,
         terminal_opacity: float = 1.0,
         terminal_extension: float = 0.5,
+        left_terminal_coord: np.ndarray | None = None,
+        right_terminal_coord: np.ndarray | None = None,
         label_text: str | None = None,
         label_position: np.ndarray = UP,
         label_color: ManimColor = WHITE,
@@ -277,6 +337,15 @@ class Capacitor(TwoTerminalElement):
         创建一个电容符号。
         """
         super().__init__(**kwargs)
+
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            left_terminal_coord = np.array(left_terminal_coord, dtype=float)
+            right_terminal_coord = np.array(right_terminal_coord, dtype=float)
+            length = float(np.linalg.norm(right_terminal_coord - left_terminal_coord))
+
+        if length < plate_spacing:
+            raise ValueError(f"length({length}) 小于 plate_spacing({plate_spacing})，无法绘制电容。")
+
         self.length = length
         self.plate_spacing = plate_spacing
         self.plate_length = plate_length
@@ -328,3 +397,12 @@ class Capacitor(TwoTerminalElement):
             plate_x = -self.plate_spacing / 2 - 0.15 if self.positive_plate == 1 else self.plate_spacing / 2 + 0.15
             plus_sign.move_to(np.array([plate_x, self.plate_length / 2, 0]))
             label_mark_group.add(plus_sign)
+
+        if left_terminal_coord is not None and right_terminal_coord is not None:
+            desired_vec = np.array(right_terminal_coord, dtype=float) - np.array(left_terminal_coord, dtype=float)
+            if np.allclose(desired_vec, 0):
+                raise ValueError("left_terminal_coord 与 right_terminal_coord 重合，无法确定元件方向与长度。")
+            desired_angle = angle_of_vector(desired_vec)
+            self.rotate(desired_angle, about_point=ORIGIN)
+            self.shift(np.array(left_terminal_coord, dtype=float) - np.array(self.left_terminal, dtype=float))
+            self.update_label_for_angle(desired_angle)
